@@ -1,0 +1,57 @@
+name: Build SmartWebView APK with Auto-Icon
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant Execute Permission
+        run: chmod +x gradlew
+
+      # Telegram က ပုံပို့လိုက်ရင် icon.png ဆိုတဲ့နာမည်နဲ့ ရောက်လာမယ်လို့ ယူဆပါတယ်
+      - name: Update App Icon
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          if [ -f "icon.png" ]; then
+            echo "🎨 Processing new icon..."
+            # Android ရဲ့ Standard Size များအတိုင်း ချိန်ညှိခြင်း
+            convert icon.png -resize 512x512 app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+            convert icon.png -resize 512x512 app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+            echo "✅ Logo updated successfully!"
+          else
+            echo "⚠️ No icon.png found, using default SmartWebView icon."
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartWebView-Debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Send to Telegram
+        if: env.TELEGRAM_TOKEN != ''
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -F document=@"app/build/outputs/apk/debug/app-debug.apk" \
+               -F caption="✅ Build Success! Your Logo and URL have been applied." \
+               https://api.telegram.org/bot${{ env.TELEGRAM_TOKEN }}/sendDocument?chat_id=${{ env.TELEGRAM_CHAT_ID }}
